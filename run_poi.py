@@ -257,7 +257,7 @@ def read_poi_examples(input_file, is_training):
                     doc_tokens[-1] += c
                 prev_is_whitespace = False
             char_to_word_offset.append(len(doc_tokens) - 1)
-        #TODO chinese tokenize
+        # TODO chinese tokenize
         qas_id = id
         id = id + 1
         start_position = None
@@ -1107,6 +1107,60 @@ def validate_flags_or_throw(bert_config):
             "The max_seq_length (%d) must be greater than max_query_length "
             "(%d) + 3" % (FLAGS.max_seq_length, FLAGS.max_query_length))
 
+    def serving_input_fn():
+        with tf.variable_scope("foo"):
+            feature_spec = {
+                "unique_ids": tf.FixedLenFeature([], tf.int64),
+                "input_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
+                "input_mask": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
+                "segment_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
+            }
+            serialized_tf_example = tf.placeholder(shape=[None], dtype=tf.string)
+            serialized_tf_example_1 = tf.placeholder(shape=[None], dtype=tf.string)
+            serialized_tf_example_2 = tf.placeholder(shape=[None], dtype=tf.string)
+            serialized_tf_example_3 = tf.placeholder(shape=[None], dtype=tf.string)
+
+            received_tensors = {
+                'unique_ids': serialized_tf_example,
+                'input_ids': serialized_tf_example_1,
+                'input_mask': serialized_tf_example_2,
+                'segment_ids': serialized_tf_example_3,
+            }
+
+            def _decode_record(record):
+                example = tf.parse_single_example(record, feature_spec)
+                for name in list(example.keys()):
+                    t = example[name]
+                    if t.dtype == tf.int64:
+                        t = tf.to_int32(t)
+                return t
+
+            features = {}
+            feature_spec = {"unique_ids": tf.FixedLenFeature([], tf.int64), }
+            features['unique_ids'] = tf.map_fn(_decode_record, serialized_tf_example, dtype=tf.int32)
+            feature_spec = {"input_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64), }
+            features['input_ids'] = tf.map_fn(_decode_record, serialized_tf_example_1, dtype=tf.int32)
+            feature_spec = {"input_mask": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64), }
+            features['input_mask'] = tf.map_fn(_decode_record, serialized_tf_example_2, dtype=tf.int32)
+            feature_spec = {"segment_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64), }
+            features['segment_ids'] = tf.map_fn(_decode_record, serialized_tf_example_3, dtype=tf.int32)
+            return tf.estimator.export.ServingInputReceiver(features, received_tensors)
+
+
+def serving_input_fn():
+    serialized_tf_example = tf.placeholder(dtype=tf.string, shape=None,
+                                           name='input_example_tensor')
+    feature_spec = {
+        "unique_ids": tf.FixedLenFeature([], tf.int64),
+        "input_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
+        "input_mask": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
+        "segment_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
+    }
+
+    receiver_tensors = {'examples': serialized_tf_example}
+    features = tf.parse_example(serialized_tf_example, feature_spec)
+    return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
+
 
 def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -1169,96 +1223,102 @@ def main(_):
         train_batch_size=FLAGS.train_batch_size,
         predict_batch_size=FLAGS.predict_batch_size)
 
-    if FLAGS.do_train:
-        # We write to a temporary file to avoid storing very large constant tensors
-        # in memory.
-        train_writer = FeatureWriter(
-            filename=os.path.join(FLAGS.output_dir, "train.tf_record"),
-            is_training=True)
-        convert_examples_to_features(
-            examples=train_examples,
-            tokenizer=tokenizer,
-            max_seq_length=FLAGS.max_seq_length,
-            doc_stride=FLAGS.doc_stride,
-            max_query_length=FLAGS.max_query_length,
-            is_training=True,
-            output_fn=train_writer.process_feature)
-        train_writer.close()
+    ## model export bg
 
-        tf.logging.info("***** Running training *****")
-        tf.logging.info("  Num orig examples = %d", len(train_examples))
-        tf.logging.info("  Num split examples = %d", train_writer.num_features)
-        tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
-        tf.logging.info("  Num steps = %d", num_train_steps)
-        del train_examples
+    estimator.export_savedmodel('model_export', serving_input_fn)
 
-        train_input_fn = input_fn_builder(
-            input_file=train_writer.filename,
-            seq_length=FLAGS.max_seq_length,
-            is_training=True,
-            drop_remainder=True)
-        estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
+    ## model export ed
 
-    if FLAGS.do_predict:
-        eval_examples = read_poi_examples(
-            input_file=FLAGS.predict_file, is_training=False)
-
-        eval_writer = FeatureWriter(
-            filename=os.path.join(FLAGS.output_dir, "eval.tf_record"),
-            is_training=False)
-        eval_features = []
-
-        def append_feature(feature):
-            eval_features.append(feature)
-            eval_writer.process_feature(feature)
-
-        convert_examples_to_features(
-            examples=eval_examples,
-            tokenizer=tokenizer,
-            max_seq_length=FLAGS.max_seq_length,
-            doc_stride=FLAGS.doc_stride,
-            max_query_length=FLAGS.max_query_length,
-            is_training=False,
-            output_fn=append_feature)
-        eval_writer.close()
-
-        tf.logging.info("***** Running predictions *****")
-        tf.logging.info("  Num orig examples = %d", len(eval_examples))
-        tf.logging.info("  Num split examples = %d", len(eval_features))
-        tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
-
-        all_results = []
-
-        predict_input_fn = input_fn_builder(
-            input_file=eval_writer.filename,
-            seq_length=FLAGS.max_seq_length,
-            is_training=False,
-            drop_remainder=False)
-
-        # If running eval on the TPU, you will need to specify the number of
-        # steps.
-        all_results = []
-        for result in estimator.predict(
-                predict_input_fn, yield_single_examples=True):
-            if len(all_results) % 1000 == 0:
-                tf.logging.info("Processing example: %d" % (len(all_results)))
-            unique_id = int(result["unique_ids"])
-            start_logits = [float(x) for x in result["start_logits"].flat]
-            end_logits = [float(x) for x in result["end_logits"].flat]
-            all_results.append(
-                RawResult(
-                    unique_id=unique_id,
-                    start_logits=start_logits,
-                    end_logits=end_logits))
-
-        output_prediction_file = os.path.join(FLAGS.output_dir, "predictions.json")
-        output_nbest_file = os.path.join(FLAGS.output_dir, "nbest_predictions.json")
-        output_null_log_odds_file = os.path.join(FLAGS.output_dir, "null_odds.json")
-
-        write_predictions(eval_examples, eval_features, all_results,
-                          FLAGS.n_best_size, FLAGS.max_answer_length,
-                          FLAGS.do_lower_case, output_prediction_file,
-                          output_nbest_file, output_null_log_odds_file)
+    # if FLAGS.do_train:
+    #     # We write to a temporary file to avoid storing very large constant tensors
+    #     # in memory.
+    #     train_writer = FeatureWriter(
+    #         filename=os.path.join(FLAGS.output_dir, "train.tf_record"),
+    #         is_training=True)
+    #     convert_examples_to_features(
+    #         examples=train_examples,
+    #         tokenizer=tokenizer,
+    #         max_seq_length=FLAGS.max_seq_length,
+    #         doc_stride=FLAGS.doc_stride,
+    #         max_query_length=FLAGS.max_query_length,
+    #         is_training=True,
+    #         output_fn=train_writer.process_feature)
+    #     train_writer.close()
+    #
+    #     tf.logging.info("***** Running training *****")
+    #     tf.logging.info("  Num orig examples = %d", len(train_examples))
+    #     tf.logging.info("  Num split examples = %d", train_writer.num_features)
+    #     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
+    #     tf.logging.info("  Num steps = %d", num_train_steps)
+    #     del train_examples
+    #
+    #     train_input_fn = input_fn_builder(
+    #         input_file=train_writer.filename,
+    #         seq_length=FLAGS.max_seq_length,
+    #         is_training=True,
+    #         drop_remainder=True)
+    #     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
+    #
+    # if FLAGS.do_predict:
+    #     eval_examples = read_poi_examples(
+    #         input_file=FLAGS.predict_file, is_training=False)
+    #
+    #     eval_writer = FeatureWriter(
+    #         filename=os.path.join(FLAGS.output_dir, "eval.tf_record"),
+    #         is_training=False)
+    #     eval_features = []
+    #
+    #     def append_feature(feature):
+    #         eval_features.append(feature)
+    #         eval_writer.process_feature(feature)
+    #
+    #     convert_examples_to_features(
+    #         examples=eval_examples,
+    #         tokenizer=tokenizer,
+    #         max_seq_length=FLAGS.max_seq_length,
+    #         doc_stride=FLAGS.doc_stride,
+    #         max_query_length=FLAGS.max_query_length,
+    #         is_training=False,
+    #         output_fn=append_feature)
+    #     eval_writer.close()
+    #
+    #     tf.logging.info("***** Running predictions *****")
+    #     tf.logging.info("  Num orig examples = %d", len(eval_examples))
+    #     tf.logging.info("  Num split examples = %d", len(eval_features))
+    #     tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
+    #
+    #     all_results = []
+    #
+    #     predict_input_fn = input_fn_builder(
+    #         input_file=eval_writer.filename,
+    #         seq_length=FLAGS.max_seq_length,
+    #         is_training=False,
+    #         drop_remainder=False)
+    #
+    #     # If running eval on the TPU, you will need to specify the number of
+    #     # steps.
+    #     all_results = []
+    #     for result in estimator.predict(
+    #             predict_input_fn, yield_single_examples=True):
+    #         if len(all_results) % 1000 == 0:
+    #             tf.logging.info("Processing example: %d" % (len(all_results)))
+    #         unique_id = int(result["unique_ids"])
+    #         start_logits = [float(x) for x in result["start_logits"].flat]
+    #         end_logits = [float(x) for x in result["end_logits"].flat]
+    #         all_results.append(
+    #             RawResult(
+    #                 unique_id=unique_id,
+    #                 start_logits=start_logits,
+    #                 end_logits=end_logits))
+    #
+    #     output_prediction_file = os.path.join(FLAGS.output_dir, "predictions.json")
+    #     output_nbest_file = os.path.join(FLAGS.output_dir, "nbest_predictions.json")
+    #     output_null_log_odds_file = os.path.join(FLAGS.output_dir, "null_odds.json")
+    #
+    #     write_predictions(eval_examples, eval_features, all_results,
+    #                       FLAGS.n_best_size, FLAGS.max_answer_length,
+    #                       FLAGS.do_lower_case, output_prediction_file,
+    #                       output_nbest_file, output_null_log_odds_file)
 
 
 if __name__ == "__main__":
