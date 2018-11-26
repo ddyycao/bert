@@ -1225,7 +1225,7 @@ def main(_):
 
     ## model export bg
 
-    estimator.export_savedmodel('model_export', serving_input_fn)
+    estimator.export_savedmodel('gs://bert_cz/model_export', serving_input_fn)
 
     ## model export ed
 
