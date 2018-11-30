@@ -1,4 +1,5 @@
 # coding=utf-8
+from tensorflow.python.framework.tensor_util import MakeNdarray
 from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_service_pb2_grpc
 import grpc
@@ -158,33 +159,43 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
 
             # Run callback
             result.append(feature)
+            unique_id += 1
     return result
 
 
 def remote_call(evl_features):
-    eval_feature = evl_features[0]
-    request = predict_pb2.PredictRequest()
-    request.model_spec.name = 'poi'
-    request.model_spec.signature_name = 'serving_default'
-
     def create_int_feature(values):
         feature = tf.train.Feature(
             int64_list=tf.train.Int64List(value=list(values)))
         return feature
 
-    features = collections.OrderedDict()
-    features["unique_ids"] = create_int_feature([eval_feature.unique_id])
-    features["input_ids"] = create_int_feature(eval_feature.input_ids)
-    features["input_mask"] = create_int_feature(eval_feature.input_mask)
-    features["segment_ids"] = create_int_feature(eval_feature.segment_ids)
-    example = tf.train.Example(features=tf.train.Features(feature=features)).SerializeToString()
-    request.inputs['examples'].CopyFrom(tf.make_tensor_proto([example], dtype=tf.string))
+    exps = []
+    request = predict_pb2.PredictRequest()
+    request.model_spec.name = 'poi'
+    request.model_spec.signature_name = 'serving_default'
+    for eval_feature in evl_features:
+        features = collections.OrderedDict()
+        features["unique_ids"] = create_int_feature([eval_feature.unique_id])
+        features["input_ids"] = create_int_feature(eval_feature.input_ids)
+        features["input_mask"] = create_int_feature(eval_feature.input_mask)
+        features["segment_ids"] = create_int_feature(eval_feature.segment_ids)
+        example = tf.train.Example(features=tf.train.Features(feature=features)).SerializeToString()
+        exps.append(example)
+
+    request.inputs['examples'].CopyFrom(tf.make_tensor_proto(exps, dtype=tf.string))
     response = stub.Predict(request, 60.0)
 
-    end_logits = [float(x) for x in response.outputs['end_logits'].float_val]
-    start_logits = [float(x) for x in response.outputs['start_logits'].float_val]
-    unique_id = int(response.outputs['unique_ids'].int64_val[0])
-    all_results = [RawResult(unique_id=unique_id, start_logits=start_logits, end_logits=end_logits)]
+    starts_nd = MakeNdarray(response.outputs['start_logits']).tolist()
+
+    end_nd = MakeNdarray(response.outputs['end_logits']).tolist()
+
+    unique_nd = MakeNdarray(response.outputs['unique_ids']).tolist()
+    all_results = []
+    for (idx, start_logits) in enumerate(starts_nd):
+        end_logits = end_nd[idx]
+        unique_id = unique_nd[idx]
+        all_results.append(RawResult(unique_id=unique_id, start_logits=start_logits, end_logits=end_logits))
+
     return all_results
 
 
@@ -352,7 +363,7 @@ def clean_text(txt):
     return tokenizer.basic_tokenizer._run_strip_accents(tokenizer.basic_tokenizer._clean_text(txt))
 
 
-@app.route('/poi',methods=['POST'])
+@app.route('/poi', methods=['POST'])
 def get_poi():
     input_txt = request.json['input']
     input_txt = clean_text(input_txt)

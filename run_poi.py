@@ -1108,45 +1108,6 @@ def validate_flags_or_throw(bert_config):
             "(%d) + 3" % (FLAGS.max_seq_length, FLAGS.max_query_length))
 
 
-# def serving_input_fn():
-#         with tf.variable_scope("foo"):
-#             feature_spec = {
-#                 "unique_ids": tf.FixedLenFeature([], tf.int64),
-#                 "input_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
-#                 "input_mask": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
-#                 "segment_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
-#             }
-#             serialized_tf_example = tf.placeholder(shape=[None], dtype=tf.string)
-#             serialized_tf_example_1 = tf.placeholder(shape=[None], dtype=tf.string)
-#             serialized_tf_example_2 = tf.placeholder(shape=[None], dtype=tf.string)
-#             serialized_tf_example_3 = tf.placeholder(shape=[None], dtype=tf.string)
-#
-#             received_tensors = {
-#                 'unique_ids': serialized_tf_example,
-#                 'input_ids': serialized_tf_example_1,
-#                 'input_mask': serialized_tf_example_2,
-#                 'segment_ids': serialized_tf_example_3,
-#             }
-#
-#             def _decode_record(record):
-#                 example = tf.parse_single_example(record, feature_spec)
-#                 for name in list(example.keys()):
-#                     t = example[name]
-#                     if t.dtype == tf.int64:
-#                         t = tf.to_int32(t)
-#                 return t
-#
-#             features = {}
-#             feature_spec = {"unique_ids": tf.FixedLenFeature([], tf.int64), }
-#             features['unique_ids'] = tf.map_fn(_decode_record, serialized_tf_example, dtype=tf.int32)
-#             feature_spec = {"input_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64), }
-#             features['input_ids'] = tf.map_fn(_decode_record, serialized_tf_example_1, dtype=tf.int32)
-#             feature_spec = {"input_mask": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64), }
-#             features['input_mask'] = tf.map_fn(_decode_record, serialized_tf_example_2, dtype=tf.int32)
-#             feature_spec = {"segment_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64), }
-#             features['segment_ids'] = tf.map_fn(_decode_record, serialized_tf_example_3, dtype=tf.int32)
-#             return tf.estimator.export.ServingInputReceiver(features, received_tensors)
-
 feature_spec = {
     "unique_ids": tf.FixedLenFeature([], tf.int64),
     "input_ids": tf.FixedLenFeature([FLAGS.max_seq_length], tf.int64),
