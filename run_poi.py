@@ -443,6 +443,9 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     tf.logging.info(
                         "answer: %s" % (tokenization.printable_text(answer_text)))
 
+            if start_position == 0:
+                tf.logging.error("start_position is 0")
+
             feature = InputFeatures(
                 unique_id=unique_id,
                 example_index=example_index,
