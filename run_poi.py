@@ -228,9 +228,7 @@ def read_poi_examples(input_file, is_training):
         reader = csv.DictReader(csvfile)
         for row in reader:
             context = row['description'].strip()
-            print(context)
             poi = row['poiname'].strip()
-            print(poi)
             start = context.find(poi)
             obj = {'context': context, 'answer': {'start': start, 'text': poi}}
             datas.append(obj)
@@ -257,7 +255,7 @@ def read_poi_examples(input_file, is_training):
                     doc_tokens[-1] += c
                 prev_is_whitespace = False
             char_to_word_offset.append(len(doc_tokens) - 1)
-        # TODO chinese tokenize
+
         qas_id = id
         id = id + 1
         start_position = None
