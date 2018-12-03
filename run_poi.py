@@ -47,6 +47,10 @@ flags.DEFINE_string(
     "output_dir", None,
     "The output directory where the model checkpoints will be written.")
 
+flags.DEFINE_string(
+    "saved_model_dir", None,
+    "The output directory where the saved model will be written.")
+
 ## Other parameters
 flags.DEFINE_string("train_file", None,
                     "SQuAD json for training. E.g., train-v1.1.json")
@@ -1188,6 +1192,10 @@ def main(_):
     # estimator.export_savedmodel('model_export', serving_input_fn)
     ## model export ed
 
+    if FLAGS.saved_model_dir:
+        estimator.export_savedmodel(FLAGS.saved_model_dir, serving_input_fn)
+        return
+
     if FLAGS.do_train:
         # We write to a temporary file to avoid storing very large constant tensors
         # in memory.
@@ -1246,7 +1254,6 @@ def main(_):
         tf.logging.info("  Num split examples = %d", len(eval_features))
         tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
 
-        all_results = []
 
         predict_input_fn = input_fn_builder(
             input_file=eval_writer.filename,
