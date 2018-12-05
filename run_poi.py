@@ -307,7 +307,7 @@ def read_poi_examples(input_file, is_training):
 
 
 def convert_examples_to_features(examples, tokenizer, max_seq_length,
-                                 doc_stride, max_query_length, is_training,
+                                 doc_stride, is_training,
                                  output_fn):
     """Loads a data file into a list of `InputBatch`s."""
 
@@ -1212,7 +1212,6 @@ def main(_):
             tokenizer=tokenizer,
             max_seq_length=FLAGS.max_seq_length,
             doc_stride=FLAGS.doc_stride,
-            max_query_length=FLAGS.max_query_length,
             is_training=True,
             output_fn=train_writer.process_feature)
         train_writer.close()
@@ -1249,7 +1248,6 @@ def main(_):
             tokenizer=tokenizer,
             max_seq_length=FLAGS.max_seq_length,
             doc_stride=FLAGS.doc_stride,
-            max_query_length=FLAGS.max_query_length,
             is_training=False,
             output_fn=append_feature)
         eval_writer.close()
