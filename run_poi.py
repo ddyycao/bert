@@ -406,8 +406,10 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 if not (tok_start_position >= doc_start and tok_end_position <= doc_end):
                     out_of_span = True
                 if out_of_span:
-                    start_position = 0
-                    end_position = 0
+                    continue
+                    # 修改在poi识别的场景下由于没有权威数据所以也需要跳过
+                    # start_position = 0
+                    # end_position = 0
                 else:
                     doc_offset = 1
                     start_position = tok_start_position - doc_start + doc_offset
