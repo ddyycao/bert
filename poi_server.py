@@ -6,6 +6,7 @@ import grpc
 import tensorflow as tf
 import tokenization
 import collections
+import re
 
 from run_poi import SquadExample, _check_is_max_context, InputFeatures, RawResult, _get_best_indexes, get_final_text, \
     _compute_softmax
@@ -362,10 +363,26 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
 def clean_text(txt):
     return tokenizer.basic_tokenizer._run_strip_accents(tokenizer.basic_tokenizer._clean_text(txt))
 
+# 直接利用正则提取名称：或者名：后面的内容
+def regex_extract(txt):
+    pattern1 = re.compile(r"(?<=名：).*")
+    txt = txt.replace(":", "：")
+    txt = txt.replace("名称：", "名：")
+    res = pattern1.search(txt)
+    if res:
+        return res.group()
+    else:
+        return None
+
 
 @app.route('/poi', methods=['POST'])
 def get_poi():
     input_txt = request.json['input']
+    # 能直接正则的就直接返回
+    reg_res = regex_extract(input_txt)
+    if reg_res:
+        return jsonify({'text': reg_res})
+
     input_txt = clean_text(input_txt)
     eval_examples = read_poi_examples(input_txt)
     eval_features = convert_examples_to_features(
